@@ -1,0 +1,3 @@
+projects:
+  type_n_search:
+    root: "../type_n_search"
