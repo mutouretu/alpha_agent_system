@@ -19,12 +19,38 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in `.env`. `OPENAI_MODEL` defaults to `gpt-5.5`.
+Set the provider and API key in `.env`.
+
+For OpenAI:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+For DeepSeek:
+
+```env
+LLM_PROVIDER=deepseek
+DEEPSEEK_API_KEY=...
+DEEPSEEK_MODEL=deepseek-chat
+```
+
+`LLM_PROVIDER` supports `openai` and `deepseek`. OpenAI uses `client.responses.create(...)`. DeepSeek uses the OpenAI Python SDK with `base_url=https://api.deepseek.com`; if `responses.create(...)` is unavailable, it automatically falls back to `chat.completions.create(...)`.
 
 ## Run
 
 ```bash
 python scripts/run_type_n_agent.py \
+  --date 2026-05-23 \
+  --type-n-root ../type_n_search
+```
+
+If the virtual environment is not activated, run the same command with the venv interpreter:
+
+```bash
+.venv/bin/python scripts/run_type_n_agent.py \
   --date 2026-05-23 \
   --type-n-root ../type_n_search
 ```

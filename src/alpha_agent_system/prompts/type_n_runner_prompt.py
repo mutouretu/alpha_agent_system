@@ -12,10 +12,10 @@ JSON 格式必须严格为：
 }
 
 可用工具：
-- run_type_n_search
-- validate_csv
-- read_csv_head
-- generate_type_n_summary
+- run_type_n_search(args: {"trade_date": "...", "output_path": "..."})
+- validate_csv(args: {"path": "...", "required_columns": ["trade_date", "ts_code", "name", "model_score"]})
+- read_csv_head(args: {"path": "...", "n": 20})
+- generate_type_n_summary(args: {"candidates_path": "...", "output_path": "..."})
 
 建议流程：
 1. 调用 run_type_n_search 生成 candidates.csv。

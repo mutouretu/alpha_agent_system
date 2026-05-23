@@ -74,8 +74,14 @@ class TypeNRunnerAgent:
             "所有输出文件必须位于本次 run_dir 内。"
         )
 
-    def _run_type_n_search(self, trade_date: str | None = None, output_path: str | None = None) -> dict[str, Any]:
-        resolved_output = self._path_in_run_dir(output_path or self.candidates_path)
+    def _run_type_n_search(
+        self,
+        trade_date: str | None = None,
+        output_path: str | None = None,
+        candidates_path: str | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        resolved_output = self._path_in_run_dir(output_path or candidates_path or self.candidates_path)
         if resolved_output is None:
             return {"ok": False, "tool": "run_type_n_search", "error": "output_path must stay inside run_dir"}
         return run_type_n_search(
@@ -88,14 +94,22 @@ class TypeNRunnerAgent:
         self,
         path: str | None = None,
         required_columns: list[str] | None = None,
+        candidates_path: str | None = None,
+        **_: Any,
     ) -> dict[str, Any]:
-        resolved_path = self._path_in_run_dir(path or self.candidates_path)
+        resolved_path = self._path_in_run_dir(path or candidates_path or self.candidates_path)
         if resolved_path is None:
             return {"ok": False, "tool": "validate_csv", "error": "path must stay inside run_dir"}
         return validate_csv(resolved_path, required_columns or DEFAULT_REQUIRED_COLUMNS)
 
-    def _read_csv_head(self, path: str | None = None, n: int = 20) -> dict[str, Any]:
-        resolved_path = self._path_in_run_dir(path or self.candidates_path)
+    def _read_csv_head(
+        self,
+        path: str | None = None,
+        n: int = 20,
+        candidates_path: str | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        resolved_path = self._path_in_run_dir(path or candidates_path or self.candidates_path)
         if resolved_path is None:
             return {"ok": False, "tool": "read_csv_head", "error": "path must stay inside run_dir"}
         return read_csv_head(resolved_path, n=n)
@@ -104,6 +118,7 @@ class TypeNRunnerAgent:
         self,
         candidates_path: str | None = None,
         output_path: str | None = None,
+        **_: Any,
     ) -> dict[str, Any]:
         resolved_candidates = self._path_in_run_dir(candidates_path or self.candidates_path)
         resolved_output = self._path_in_run_dir(output_path or self.summary_path)
