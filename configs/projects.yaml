@@ -1,3 +1,5 @@
 projects:
+  daily_cache:
+    root: "../build-daily-cache"
   type_n_search:
     root: "../type_n_search"

@@ -46,7 +46,10 @@ class AgentLoop:
                 args = {}
 
             if action == "finish":
-                final_answer = str(decision.get("thought", "finished"))
+                finish_args = decision.get("args", {})
+                if not isinstance(finish_args, dict):
+                    finish_args = {}
+                final_answer = str(finish_args.get("summary") or decision.get("thought", "finished"))
                 self.trace_writer.write(
                     {
                         "step": step,

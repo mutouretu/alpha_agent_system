@@ -39,7 +39,41 @@ DEEPSEEK_MODEL=deepseek-chat
 
 `LLM_PROVIDER` supports `openai` and `deepseek`. OpenAI uses `client.responses.create(...)`. DeepSeek uses the OpenAI Python SDK with `base_url=https://api.deepseek.com`; if `responses.create(...)` is unavailable, it automatically falls back to `chat.completions.create(...)`.
 
-## Run
+## Semantic Command
+
+Recommended natural-language entry point:
+
+```bash
+python scripts/run_semantic_command.py "执行今天的 type-n 选股"
+```
+
+If the virtual environment is not activated:
+
+```bash
+.venv/bin/python scripts/run_semantic_command.py "执行今天的 type-n 选股"
+```
+
+Project paths are read from `configs/projects.yaml`:
+
+```yaml
+projects:
+  daily_cache:
+    root: "../build-daily-cache"
+  type_n_search:
+    root: "../type_n_search"
+```
+
+Agent step limits are read from `configs/agents.yaml`.
+
+Debug overrides are still available:
+
+```bash
+python scripts/run_semantic_command.py "执行今天的 type-n 选股" \
+  --daily-cache-root ../build-daily-cache \
+  --type-n-root ../type_n_search
+```
+
+## Direct Type-N Run
 
 ```bash
 python scripts/run_type_n_agent.py \

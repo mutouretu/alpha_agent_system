@@ -1,0 +1,9 @@
+agents:
+  semantic_command:
+    max_steps: 8
+  data_mining_group:
+    max_steps: 8
+  daily_cache:
+    max_steps: 6
+  type_n_runner:
+    max_steps: 8
