@@ -82,11 +82,13 @@ def merge_final_candidates(
     output_path: str | Path,
     status_path: str | Path,
     final_merge_config: str | None = "default",
+    sort_fields: str | list[str] | None = None,
 ) -> dict[str, Any]:
     args: dict[str, Any] = {
         "phase1-pool-path": phase1_pool_path,
         "phase2-scores-path": phase2_scores_path,
         "final-merge-config": final_merge_config,
+        "sort-fields": _format_sort_fields(sort_fields),
         "output-path": output_path,
         "status-path": status_path,
     }
@@ -254,6 +256,14 @@ def _append_cli_arg(cmd: list[str], key: str, value: Any) -> None:
                 cmd.extend([option, str(item)])
         return
     cmd.extend([option, str(value)])
+
+
+def _format_sort_fields(sort_fields: str | list[str] | tuple[str, ...] | None) -> str | None:
+    if sort_fields is None:
+        return None
+    if isinstance(sort_fields, str):
+        return sort_fields
+    return ",".join(str(field) for field in sort_fields if field)
 
 
 def _read_status(status_path: str | Path | None) -> dict[str, Any]:

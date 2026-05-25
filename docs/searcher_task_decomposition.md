@@ -91,6 +91,42 @@ run_phase1_scan
 
 Both paths should coexist.
 
+## Validation Modes
+
+Production mode is for real strategy runs. It uses `anchor_lookback_days`, the configured `reviewer_config`, and the default final merge scoring/sorting for the current SearcherAgent workflow.
+
+Compat mode is only for validation. It checks whether the decomposed workflow can reproduce the legacy fast path under equivalent parameters. The comparison tool can parse fast path directory names such as:
+
+```text
+target_2026-05-12_from_2026-04-27_top20
+```
+
+From that name it infers `target_date`, `anchor_start_date`, and `phase1_top_n`, then runs or reuses a matching decomposed compat output. Compat mode is not the recommended mode for real strategy selection.
+
+Recommended end-to-end command:
+
+```bash
+python scripts/run_semantic_command.py "执行今天的 type-n 选股"
+```
+
+Recommended comparison commands:
+
+```bash
+python scripts/compare_two_phase_modes.py \
+  --date 2026-05-12 \
+  --type-n-root ../type_n_search \
+  --comparison-mode compat
+```
+
+```bash
+python scripts/compare_two_phase_modes.py \
+  --date 2026-05-12 \
+  --type-n-root ../type_n_search \
+  --comparison-mode production
+```
+
+In compat mode, `anchor_dates_equal=True`, near-identical phase1 pool size, and much higher Top30 overlap indicate that decomposed orchestration is aligned with the fast path. In production mode, differences caused by longer lookback, reviewer configuration, or final scoring are expected and should be reported as parameter mismatches rather than strategy failures.
+
 ## Output Contract
 
 SearcherAgent writes outputs under:

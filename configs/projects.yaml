@@ -3,3 +3,5 @@ projects:
     root: "../build-daily-cache"
   type_n_search:
     root: "../type_n_search"
+data:
+  raw_daily_dir: "../shared_data/raw/daily/parquet_daily_cache"

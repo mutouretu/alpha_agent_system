@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import yaml
 
 from alpha_agent_system.core.agent_loop import AgentLoop
 from alpha_agent_system.core.llm_client import LLMClient
@@ -37,6 +38,12 @@ class SearcherAgent:
         run_dir: str | Path,
         llm_client: LLMClient | None = None,
         max_steps: int = 8,
+        anchor_start_date: str | None = None,
+        anchor_lookback_days: int = 20,
+        phase1_top_n: int = 20,
+        reviewer_config: str | None = "ma120_trend_soft",
+        final_merge_config: str | None = "default",
+        sort_fields: str | list[str] | None = None,
     ) -> None:
         self.trade_date = trade_date
         self.type_n_project_root = Path(type_n_project_root).resolve()
@@ -55,6 +62,13 @@ class SearcherAgent:
         self.final_answer_path = self.run_dir / "final_answer.md"
         self.llm_client = llm_client or LLMClient()
         self.max_steps = max_steps
+        self.anchor_start_date = anchor_start_date
+        self.anchor_lookback_days = anchor_lookback_days
+        self.phase1_top_n = phase1_top_n
+        self.reviewer_config = reviewer_config
+        self.final_merge_config = final_merge_config
+        self.sort_fields = self._normalize_sort_fields(sort_fields)
+        self.raw_daily_dir, self.raw_daily_dir_warning = self._resolve_raw_daily_dir()
 
     def run(self) -> dict[str, Any]:
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -111,14 +125,21 @@ class SearcherAgent:
             f"phase2_scores_path: {self.phase2_scores_path}\n"
             f"final_candidates_path: {self.final_candidates_path}\n"
             f"report_path: {self.report_path}\n"
-            "默认 reviewer_config 使用 ma120_trend_soft；默认 final_merge_config 使用 default。"
+            f"anchor_start_date: {self.anchor_start_date or ''}\n"
+            f"anchor_lookback_days: {self.anchor_lookback_days}\n"
+            f"phase1_top_n: {self.phase1_top_n}\n"
+            f"reviewer_config: {self.reviewer_config or 'none'}\n"
+            f"final_merge_config: {self.final_merge_config or 'default'}\n"
+            f"sort_fields: {','.join(self.sort_fields) if self.sort_fields else ''}\n"
+            f"raw_daily_dir: {self.raw_daily_dir}\n"
         )
 
     def _run_phase1_scan(
         self,
         target_date: str | None = None,
-        anchor_lookback_days: int = 20,
-        phase1_top_n: int = 20,
+        anchor_start_date: str | None = None,
+        anchor_lookback_days: int | None = None,
+        phase1_top_n: int | None = None,
         output_path: str | None = None,
         status_path: str | None = None,
         **_: Any,
@@ -130,12 +151,14 @@ class SearcherAgent:
         result = run_phase1_scan(
             project_root=self.type_n_project_root,
             target_date=target_date or self.trade_date,
-            anchor_lookback_days=anchor_lookback_days,
-            phase1_top_n=phase1_top_n,
-            raw_daily_dir=self._default_raw_daily_dir(),
+            anchor_lookback_days=anchor_lookback_days if anchor_lookback_days is not None else self.anchor_lookback_days,
+            phase1_top_n=phase1_top_n if phase1_top_n is not None else self.phase1_top_n,
+            raw_daily_dir=self.raw_daily_dir,
+            anchor_start_date=anchor_start_date or self.anchor_start_date,
             output_path=resolved_output,
             status_path=resolved_status,
         )
+        self._attach_raw_daily_warning(result, resolved_status)
         self._record_task("run_phase1_scan", result, resolved_output)
         return result
 
@@ -165,7 +188,7 @@ class SearcherAgent:
         self,
         target_date: str | None = None,
         phase1_pool_path: str | None = None,
-        reviewer_config: str | None = "ma120_trend_soft",
+        reviewer_config: str | None = None,
         output_path: str | None = None,
         status_path: str | None = None,
         **_: Any,
@@ -179,11 +202,12 @@ class SearcherAgent:
             project_root=self.type_n_project_root,
             target_date=target_date or self.trade_date,
             phase1_pool_path=resolved_pool,
-            raw_daily_dir=self._default_raw_daily_dir(),
-            reviewer_config=reviewer_config,
+            raw_daily_dir=self.raw_daily_dir,
+            reviewer_config=reviewer_config if reviewer_config is not None else self.reviewer_config,
             output_path=resolved_output,
             status_path=resolved_status,
         )
+        self._attach_raw_daily_warning(result, resolved_status)
         self._record_task("run_phase2_filter", result, resolved_output)
         return result
 
@@ -191,7 +215,8 @@ class SearcherAgent:
         self,
         phase1_pool_path: str | None = None,
         phase2_scores_path: str | None = None,
-        final_merge_config: str | None = "default",
+        final_merge_config: str | None = None,
+        sort_fields: str | list[str] | None = None,
         output_path: str | None = None,
         status_path: str | None = None,
         **_: Any,
@@ -206,7 +231,8 @@ class SearcherAgent:
             project_root=self.type_n_project_root,
             phase1_pool_path=resolved_pool,
             phase2_scores_path=resolved_scores,
-            final_merge_config=final_merge_config,
+            final_merge_config=final_merge_config if final_merge_config is not None else self.final_merge_config,
+            sort_fields=sort_fields if sort_fields is not None else self.sort_fields,
             output_path=resolved_output,
             status_path=resolved_status,
         )
@@ -238,15 +264,49 @@ class SearcherAgent:
         self._record_task("generate_two_phase_report", result, resolved_output)
         return result
 
-    def _default_raw_daily_dir(self) -> Path:
+    def _resolve_raw_daily_dir(self) -> tuple[Path, str | None]:
+        configured = self._configured_raw_daily_dir()
+        if configured is not None and configured.exists():
+            return configured.resolve(), None
+
         candidates = [
-            self.type_n_project_root.parent / "shared_data" / "raw" / "daily" / "parquet_daily_cache_5-12",
             self.type_n_project_root.parent / "shared_data" / "raw" / "daily" / "parquet_daily_cache",
+            self.type_n_project_root.parent / "shared_data" / "raw" / "daily" / "parquet_daily_cache_5-12",
         ]
         for candidate in candidates:
             if candidate.exists():
-                return candidate.resolve()
-        return candidates[0].resolve()
+                warning = None
+                if candidate.name == "parquet_daily_cache_5-12":
+                    warning = f"raw_daily_dir fell back to test cache path: {candidate.resolve()}"
+                return candidate.resolve(), warning
+        return candidates[0].resolve(), f"raw_daily_dir fallback path does not exist yet: {candidates[0].resolve()}"
+
+    @staticmethod
+    def _configured_raw_daily_dir() -> Path | None:
+        config_path = Path(__file__).resolve().parents[3] / "configs" / "projects.yaml"
+        try:
+            config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        except Exception:  # noqa: BLE001
+            return None
+        raw_value = (config.get("data") or {}).get("raw_daily_dir")
+        if not raw_value:
+            return None
+        path = Path(raw_value)
+        if not path.is_absolute():
+            path = config_path.parents[1] / path
+        return path.resolve()
+
+    def _attach_raw_daily_warning(self, result: dict[str, Any], status_path: Path) -> None:
+        if not self.raw_daily_dir_warning:
+            return
+        status = result.setdefault("status", {})
+        warnings = status.setdefault("warnings", [])
+        if self.raw_daily_dir_warning not in warnings:
+            warnings.append(self.raw_daily_dir_warning)
+        try:
+            status_path.write_text(json.dumps(status, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+        except Exception:  # noqa: BLE001
+            pass
 
     def _path_in_run_dir(self, path: str | Path) -> Path | None:
         candidate = Path(path)
@@ -265,6 +325,14 @@ class SearcherAgent:
             "workflow": "two_phase",
             "mode": "decomposed",
             "target_date": self.trade_date,
+            "config": {
+                "anchor_start_date": self.anchor_start_date,
+                "anchor_lookback_days": self.anchor_lookback_days,
+                "phase1_top_n": self.phase1_top_n,
+                "reviewer_config": self.reviewer_config,
+                "final_merge_config": self.final_merge_config,
+                "sort_fields": self.sort_fields,
+            },
             "tasks": [
                 {"name": name, "status": "pending", "output": self._default_task_output(name)}
                 for name in TASK_NAMES
@@ -334,3 +402,11 @@ class SearcherAgent:
     def _write_json(path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _normalize_sort_fields(sort_fields: str | list[str] | None) -> list[str]:
+        if sort_fields is None:
+            return []
+        if isinstance(sort_fields, str):
+            return [field.strip() for field in sort_fields.split(",") if field.strip()]
+        return [str(field).strip() for field in sort_fields if str(field).strip()]
