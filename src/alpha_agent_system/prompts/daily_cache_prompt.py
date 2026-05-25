@@ -18,8 +18,8 @@ JSON 格式必须严格为：
 
 建议流程：
 1. 先调用 check_daily_cache_status 检查项目与数据目录。
-2. 再调用 run_daily_cache_update，尝试走 daily-cache 的标准 CLI。
-3. 如果 update CLI 暂未实现，不要崩溃，继续调用 generate_cache_report 生成报告。
+2. 再调用 run_daily_cache_update，使用 build-daily-cache/main.py 下载增量，并合并到 shared_data 的 daily parquet cache。
+3. 如果 TuShare 当天尚未发布数据或下载失败，不要崩溃，继续调用 generate_cache_report 生成报告，并把状态标为 warning。
 4. action=finish，说明 cache 状态以及是否可继续后续搜索。
 
 安全约束：

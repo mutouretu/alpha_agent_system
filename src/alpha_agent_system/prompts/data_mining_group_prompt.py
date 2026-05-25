@@ -13,14 +13,14 @@ JSON 格式必须严格为：
 
 可用工具：
 - run_daily_cache_agent(args: {})
-- run_type_n_runner_agent(args: {})
+- run_searcher_agent(args: {})
 - generate_data_mining_report(args: {})
 
 建议流程：
 1. 先调用 run_daily_cache_agent。
 2. 检查 DailyCacheAgent 的结果。
 3. 如果 daily-cache 明确失败但只是 adapter 未实现，可以记录为 warning，然后继续运行 search，以验证多 Agent 协作链条。
-4. 调用 run_type_n_runner_agent。
+4. 调用 run_searcher_agent。
 5. 调用 generate_data_mining_report。
 6. action=finish，说明 workflow_status.json、data_mining_report.md 和下级 Agent 输出位置。
 

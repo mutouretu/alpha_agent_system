@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha_agent_system.agents.daily_cache_agent import DailyCacheAgent
+from alpha_agent_system.agents.searcher_agent import SearcherAgent
 from alpha_agent_system.agents.type_n_runner_agent import TypeNRunnerAgent
 from alpha_agent_system.core.llm_client import LLMClient
 
@@ -43,6 +44,24 @@ def run_type_n_runner_agent(
     )
     result = agent.run()
     return {"ok": bool(result.get("ok")), "tool": "run_type_n_runner_agent", "agent_result": result}
+
+
+def run_searcher_agent(
+    trade_date: str,
+    type_n_root: str | Path,
+    run_dir: str | Path,
+    llm_client: LLMClient | None = None,
+    max_steps: int = 8,
+) -> dict[str, Any]:
+    agent = SearcherAgent(
+        trade_date=trade_date,
+        type_n_project_root=type_n_root,
+        run_dir=run_dir,
+        llm_client=llm_client,
+        max_steps=max_steps,
+    )
+    result = agent.run()
+    return {"ok": bool(result.get("ok")), "tool": "run_searcher_agent", "agent_result": result}
 
 
 def generate_data_mining_report(
@@ -98,8 +117,8 @@ def generate_data_mining_report(
         "## Type-N Search",
         "",
         f"- OK: {search_result.get('ok')}",
-        f"- Candidates: `{search_result.get('candidates_path', '')}`",
-        f"- Summary: `{search_result.get('summary_path', '')}`",
+        f"- Candidates: `{search_result.get('final_candidates_path') or search_result.get('candidates_path', '')}`",
+        f"- Summary: `{search_result.get('report_path') or search_result.get('summary_path', '')}`",
         "",
     ]
     if status["warnings"]:

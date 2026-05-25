@@ -12,7 +12,7 @@ from alpha_agent_system.prompts.data_mining_group_prompt import DATA_MINING_GROU
 from alpha_agent_system.tools.agent_tools import (
     generate_data_mining_report,
     run_daily_cache_agent,
-    run_type_n_runner_agent,
+    run_searcher_agent,
 )
 
 
@@ -46,7 +46,7 @@ class DataMiningGroupAgent:
 
         registry = ToolRegistry()
         registry.register("run_daily_cache_agent", self._run_daily_cache_agent)
-        registry.register("run_type_n_runner_agent", self._run_type_n_runner_agent)
+        registry.register("run_searcher_agent", self._run_searcher_agent)
         registry.register("generate_data_mining_report", self._generate_data_mining_report)
 
         loop = AgentLoop(
@@ -79,7 +79,7 @@ class DataMiningGroupAgent:
 
     def _build_task(self) -> str:
         return (
-            "请协调 DailyCacheAgent 和 TypeNRunnerAgent 完成每日数据挖掘流程。\n"
+            "请协调 DailyCacheAgent 和 SearcherAgent 完成每日数据挖掘流程。\n"
             f"trade_date: {self.trade_date}\n"
             f"daily_cache_root: {self.daily_cache_root}\n"
             f"type_n_root: {self.type_n_root}\n"
@@ -101,8 +101,8 @@ class DataMiningGroupAgent:
         self._write_json(self.daily_cache_result_path, result.get("agent_result", result))
         return result
 
-    def _run_type_n_runner_agent(self, **_: Any) -> dict[str, Any]:
-        result = run_type_n_runner_agent(
+    def _run_searcher_agent(self, **_: Any) -> dict[str, Any]:
+        result = run_searcher_agent(
             trade_date=self.trade_date,
             type_n_root=self.type_n_root,
             run_dir=self.search_run_dir,
