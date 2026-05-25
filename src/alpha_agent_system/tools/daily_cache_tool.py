@@ -39,6 +39,9 @@ def check_daily_cache_status(project_root: str | Path, trade_date: str) -> dict[
     latest_data_date = _detect_latest_shared_date(shared_cache_dir) if shared_cache_dir else _detect_latest_data_date(data_files)
     trade_date_present = _shared_cache_has_date(shared_cache_dir, trade_date) if shared_cache_dir else False
     warnings = []
+    legacy_warning = _legacy_cache_warning(shared_cache_dir)
+    if legacy_warning:
+        warnings.append(legacy_warning)
     missing_reason = None
     if not existing_data_dirs:
         missing_reason = "No shared daily-cache directory was found."
@@ -93,7 +96,12 @@ def run_daily_cache_update(
         _write_json(status_path, result)
         return result
 
+    latest_data_date = _detect_latest_shared_date(shared_cache_dir)
     if _shared_cache_has_date(shared_cache_dir, trade_date):
+        warnings = []
+        legacy_warning = _legacy_cache_warning(shared_cache_dir)
+        if legacy_warning:
+            warnings.append(legacy_warning)
         result = {
             "ok": True,
             "tool": "run_daily_cache_update",
@@ -101,19 +109,22 @@ def run_daily_cache_update(
             "can_continue": True,
             "trade_date": trade_date,
             "project_root": str(root),
-            "latest_data_date": _detect_latest_shared_date(shared_cache_dir),
+            "latest_data_date": latest_data_date,
             "data_root": str(shared_cache_dir),
             "trade_date_present": True,
             "sample_data_files": _sample_project_files(root),
-            "warnings": [],
+            "warnings": warnings,
             "output_status_path": str(status_path),
         }
         _write_json(status_path, result)
         return result
 
     compact_date = _compact_trade_date(trade_date)
-    increment_path = root / "custom_pipeline" / "input" / f"daily_increment_{compact_date}.parquet"
-    failed_dates_path = root / "custom_pipeline" / "input" / f"failed_trade_dates_{compact_date}.json"
+    start_date = _next_calendar_date(latest_data_date) if latest_data_date else trade_date
+    compact_start_date = _compact_trade_date(start_date)
+    date_token = compact_date if compact_start_date == compact_date else f"{compact_start_date}_{compact_date}"
+    increment_path = root / "custom_pipeline" / "input" / f"daily_increment_{date_token}.parquet"
+    failed_dates_path = root / "custom_pipeline" / "input" / f"failed_trade_dates_{date_token}.json"
     main_script = root / "main.py"
     if not main_script.exists():
         result = _status_failed(
@@ -129,7 +140,7 @@ def run_daily_cache_update(
     cmd = _build_python_command(root) + [
         str(main_script),
         "--start-date",
-        compact_date,
+        compact_start_date,
         "--end-date",
         compact_date,
         "--output",
@@ -142,6 +153,9 @@ def run_daily_cache_update(
     failed_trade_dates = _read_failed_dates(failed_dates_path)
     increment_stats = _inspect_increment(increment_path)
     warnings: list[str] = []
+    legacy_warning = _legacy_cache_warning(shared_cache_dir)
+    if legacy_warning:
+        warnings.append(legacy_warning)
     errors: list[str] = []
     if completed.returncode != 0:
         errors.append("daily-cache download command failed.")
@@ -163,6 +177,10 @@ def run_daily_cache_update(
             warnings.extend(str(item) for item in merge_result.get("warnings", []))
 
     ok = completed.returncode == 0 and not errors and bool(merge_result and merge_result.get("ok"))
+    cleanup_result: dict[str, Any] | None = None
+    if ok:
+        cleanup_result = _cleanup_increment_files([increment_path, failed_dates_path])
+        warnings.extend(str(item) for item in cleanup_result.get("warnings", []))
     can_continue = _shared_cache_has_date(shared_cache_dir, trade_date) or bool(_detect_latest_shared_date(shared_cache_dir))
     result = {
         "ok": ok,
@@ -172,6 +190,8 @@ def run_daily_cache_update(
         "trade_date": trade_date,
         "project_root": str(root),
         "latest_data_date": _detect_latest_shared_date(shared_cache_dir),
+        "update_start_date": _display_trade_date(compact_start_date),
+        "update_end_date": _display_trade_date(compact_date),
         "data_root": str(shared_cache_dir),
         "trade_date_present": _shared_cache_has_date(shared_cache_dir, trade_date),
         "increment_path": str(increment_path),
@@ -179,6 +199,7 @@ def run_daily_cache_update(
         "failed_trade_dates": failed_trade_dates,
         "increment_stats": increment_stats,
         "merge_result": merge_result,
+        "cleanup_result": cleanup_result,
         "sample_data_files": _sample_project_files(root),
         "missing_reason": None if ok else "daily-cache update did not complete fully.",
         "warnings": warnings,
@@ -317,21 +338,52 @@ def _sample_project_files(root: Path) -> list[str]:
 
 
 def _detect_shared_daily_cache_dir(root: Path) -> Path | None:
+    configured = _configured_raw_daily_dir(root)
+    if configured is not None and configured.exists():
+        return configured
+
     daily_root = root.parent / "shared_data" / "raw" / "daily"
     if not daily_root.exists():
         return None
-    preferred = daily_root / "parquet_daily_cache_5-12"
-    if preferred.exists():
-        return preferred
     plain = daily_root / "parquet_daily_cache"
     if plain.exists():
         return plain
+    legacy = daily_root / "parquet_daily_cache_5-12"
+    if legacy.exists():
+        return legacy
     candidates = sorted(
         [path for path in daily_root.glob("parquet_daily_cache*") if path.is_dir()],
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
     return candidates[0] if candidates else None
+
+
+def _legacy_cache_warning(cache_dir: Path | None) -> str | None:
+    if cache_dir is None:
+        return None
+    if cache_dir.name in {"parquet_daily_cache_5-12", "parquet_daily_cache_4-24"}:
+        return f"Using legacy daily cache directory for compatibility only: {cache_dir.resolve()}"
+    return None
+
+
+def _configured_raw_daily_dir(root: Path) -> Path | None:
+    config_path = root.parent / "alpha_agent_system" / "configs" / "projects.yaml"
+    if not config_path.exists():
+        return None
+    try:
+        import yaml
+
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    raw_value = (config.get("data") or {}).get("raw_daily_dir")
+    if not raw_value:
+        return None
+    path = Path(raw_value)
+    if not path.is_absolute():
+        path = config_path.parents[1] / path
+    return path.resolve()
 
 
 def _compact_trade_date(trade_date: str) -> str:
@@ -343,6 +395,13 @@ def _display_trade_date(trade_date: str) -> str:
     if len(value) == 8 and value.isdigit():
         return f"{value[:4]}-{value[4:6]}-{value[6:]}"
     return value
+
+
+def _next_calendar_date(trade_date: str) -> str:
+    value = pd.to_datetime(trade_date, errors="coerce")
+    if pd.isna(value):
+        return trade_date
+    return (value + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def _shared_cache_has_date(cache_dir: Path | None, trade_date: str) -> bool:
@@ -424,6 +483,23 @@ def _inspect_increment(path: Path) -> dict[str, Any]:
         "symbols": int(df["ts_code"].nunique()) if "ts_code" in df.columns else 0,
         "min_date": None if dates.empty else str(dates.min()),
         "max_date": None if dates.empty else str(dates.max()),
+    }
+
+
+def _cleanup_increment_files(paths: list[Path]) -> dict[str, Any]:
+    deleted: list[str] = []
+    warnings: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            path.unlink()
+            deleted.append(str(path))
+        except Exception as exc:  # noqa: BLE001
+            warnings.append(f"failed to delete temporary increment file {path}: {exc}")
+    return {
+        "deleted_files": deleted,
+        "warnings": warnings,
     }
 
 

@@ -129,6 +129,17 @@ In compat mode, `anchor_dates_equal=True`, near-identical phase1 pool size, and 
 
 ## Output Contract
 
+## Daily Data Directory
+
+The maintained raw daily data directory is configured in `configs/projects.yaml`:
+
+```yaml
+data:
+  raw_daily_dir: "../shared_data/raw/daily/parquet_daily_cache"
+```
+
+DailyCacheAgent writes to this directory, and SearcherAgent reads from it. Historical directories such as `parquet_daily_cache_5-12` and `parquet_daily_cache_4-24` are legacy backups or compatibility fallbacks only; they are not default runtime inputs.
+
 SearcherAgent writes outputs under:
 
 ```text

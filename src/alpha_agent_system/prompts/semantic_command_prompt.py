@@ -39,7 +39,7 @@ SEMANTIC_COMMAND_SYSTEM_PROMPT = """你是 alpha_agent_system 的自然语言命
    - “昨天”使用当前本地日期前一天。
    - “5月20号”“5月20日”这类缺年份表达，默认使用当前年份。
    - 如果用户给出完整日期，保留该日期。
-4. 调用 resolve_trade_date 校验你给出的 resolved_date；该工具只做校验和必要 fallback。
+4. 调用 resolve_trade_date 校验你给出的 resolved_date；该工具不会替你纠错或 fallback。如果相对日期解析错误，工具会返回失败并暴露问题。
 5. 调用 run_data_mining_group_agent。
 6. 调用 read_workflow_status 读取 workflow_status.json。
 7. action=finish，总结 workflow status 和关键输出路径。

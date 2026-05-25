@@ -18,23 +18,40 @@ def resolve_trade_date(
 ) -> dict[str, Any]:
     raw_text = (date_text or "今天").strip()
     validated_date = _validate_resolved_date(resolved_date)
-    fallback_used = False
-    if validated_date:
-        trade_date = validated_date
-    else:
-        trade_date = _fallback_resolve_trade_date(raw_text)
-        fallback_used = True
+    expected_date = _expected_relative_or_explicit_date(raw_text)
+    if not validated_date:
+        return {
+            "ok": False,
+            "tool": "resolve_trade_date",
+            "date_text": raw_text,
+            "llm_resolved_date": resolved_date,
+            "expected_date": expected_date,
+            "intent": intent,
+            "confidence": confidence,
+            "error": "resolved_date is required and must use YYYY-MM-DD",
+        }
+    if expected_date and validated_date != expected_date:
+        return {
+            "ok": False,
+            "tool": "resolve_trade_date",
+            "date_text": raw_text,
+            "llm_resolved_date": resolved_date,
+            "expected_date": expected_date,
+            "intent": intent,
+            "confidence": confidence,
+            "error": "relative date mismatch",
+        }
 
     return {
         "ok": True,
         "tool": "resolve_trade_date",
         "date_text": raw_text,
         "llm_resolved_date": resolved_date,
-        "trade_date": trade_date,
+        "trade_date": validated_date,
+        "expected_date": expected_date,
         "intent": intent,
         "confidence": confidence,
-        "fallback_used": fallback_used,
-        "note": "LLM 先做日期语义解析；工具校验 resolved_date，必要时 fallback；尚未接入交易日历",
+        "note": "LLM owns semantic date parsing; this tool validates format and relative-date consistency without fallback.",
     }
 
 
@@ -131,3 +148,17 @@ def _fallback_resolve_trade_date(raw_text: str) -> str:
     if "昨天" in raw_text or "昨日" in raw_text:
         return (today - timedelta(days=1)).isoformat()
     return today.isoformat()
+
+
+def _expected_relative_or_explicit_date(raw_text: str) -> str | None:
+    explicit_date = _extract_explicit_date(raw_text)
+    if explicit_date:
+        return explicit_date
+    today = date.today()
+    if "今天" in raw_text or "今日" in raw_text:
+        return today.isoformat()
+    if "昨天" in raw_text or "昨日" in raw_text:
+        return (today - timedelta(days=1)).isoformat()
+    if "明天" in raw_text or "明日" in raw_text:
+        return (today + timedelta(days=1)).isoformat()
+    return None

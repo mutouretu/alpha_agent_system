@@ -72,6 +72,8 @@ data:
   raw_daily_dir: "../shared_data/raw/daily/parquet_daily_cache"
 ```
 
+`parquet_daily_cache` is the single maintained daily-cache directory. Historical names such as `parquet_daily_cache_5-12` and `parquet_daily_cache_4-24` may remain as backups or compatibility fallbacks, but they should not be used as default runtime inputs.
+
 Debug overrides are still available:
 
 ```bash
