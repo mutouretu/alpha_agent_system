@@ -34,6 +34,7 @@ def run_type_n_runner_agent(
     run_dir: str | Path,
     llm_client: LLMClient | None = None,
     max_steps: int = 8,
+    search_mode: str = "single_phase",
 ) -> dict[str, Any]:
     agent = TypeNRunnerAgent(
         trade_date=trade_date,
@@ -41,6 +42,7 @@ def run_type_n_runner_agent(
         run_dir=run_dir,
         llm_client=llm_client,
         max_steps=max_steps,
+        search_mode=search_mode,
     )
     result = agent.run()
     return {"ok": bool(result.get("ok")), "tool": "run_type_n_runner_agent", "agent_result": result}
@@ -52,6 +54,7 @@ def run_searcher_agent(
     run_dir: str | Path,
     llm_client: LLMClient | None = None,
     max_steps: int = 8,
+    search_mode: str = "two_phase",
 ) -> dict[str, Any]:
     agent = SearcherAgent(
         trade_date=trade_date,
@@ -61,6 +64,7 @@ def run_searcher_agent(
         max_steps=max_steps,
     )
     result = agent.run()
+    result["search_mode"] = search_mode
     return {"ok": bool(result.get("ok")), "tool": "run_searcher_agent", "agent_result": result}
 
 
@@ -86,6 +90,10 @@ def generate_data_mining_report(
     cache_status = daily_cache_result.get("status", {})
     if not daily_cache_result.get("ok"):
         status["warnings"].append("DailyCacheAgent did not report ok.")
+    if not search_result.get("ok"):
+        status["warnings"].append("SearcherAgent did not report ok.")
+    if search_result.get("error"):
+        status["warnings"].append(str(search_result["error"]))
     if cache_status.get("error"):
         status["warnings"].append(str(cache_status["error"]))
     for warning in cache_status.get("warnings", []):
@@ -117,7 +125,9 @@ def generate_data_mining_report(
         "## Type-N Search",
         "",
         f"- OK: {search_result.get('ok')}",
+        f"- Search mode: {search_result.get('search_mode', '')}",
         f"- Candidates: `{search_result.get('final_candidates_path') or search_result.get('candidates_path', '')}`",
+        f"- Two-phase output: `{search_result.get('two_phase_output_dir', '')}`",
         f"- Summary: `{search_result.get('report_path') or search_result.get('summary_path', '')}`",
         "",
     ]

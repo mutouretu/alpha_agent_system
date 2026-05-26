@@ -62,6 +62,7 @@ def run_data_mining_group_agent(
     run_dir: str | Path,
     llm_client: LLMClient | None = None,
     max_steps: int = 8,
+    search_mode: str = "single_phase",
 ) -> dict[str, Any]:
     agent = DataMiningGroupAgent(
         trade_date=trade_date,
@@ -70,12 +71,14 @@ def run_data_mining_group_agent(
         run_dir=run_dir,
         llm_client=llm_client,
         max_steps=max_steps,
+        search_mode=search_mode,
     )
     result = agent.run()
     return {
         "ok": bool(result.get("ok")),
         "tool": "run_data_mining_group_agent",
         "trade_date": trade_date,
+        "search_mode": search_mode,
         "workflow_status_path": result.get("workflow_status_path"),
         "data_mining_report_path": result.get("data_mining_report_path"),
         "agent_result": result,

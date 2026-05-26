@@ -41,6 +41,7 @@ class SemanticCommandAgent:
         self.max_steps = max_steps
         self.group_max_steps = group_max_steps
         self.resolved_trade_date: str | None = None
+        self.search_mode: str = self._infer_search_mode_from_command(command)
         self.group_result: dict[str, Any] | None = None
         self.workflow_status: dict[str, Any] | None = None
 
@@ -84,6 +85,7 @@ class SemanticCommandAgent:
             f"type_n_root: {self.type_n_root}\n"
             f"semantic_command_run_dir: {self.run_dir}\n"
             f"data_mining_group_runs_root: {self.project_root / 'runs' / 'data_mining_group'}\n"
+            "如果用户明确说“两阶段”“二阶段”“two phase”，search_mode 应为 two_phase。\n"
             "只能调用 DataMiningGroupAgent 这个小组级 Agent，不能直接调用底层项目脚本。"
         )
 
@@ -93,8 +95,13 @@ class SemanticCommandAgent:
         resolved_date: str | None = None,
         intent: str | None = None,
         confidence: float | None = None,
+        search_mode: str | None = None,
         **_: Any,
     ) -> dict[str, Any]:
+        if search_mode in {"single_phase", "two_phase"}:
+            self.search_mode = search_mode
+        elif intent and ("two_phase" in intent or "两阶段" in intent or "二阶段" in intent):
+            self.search_mode = "two_phase"
         result = resolve_trade_date(
             date_text=date_text or self.command,
             resolved_date=resolved_date,
@@ -105,7 +112,12 @@ class SemanticCommandAgent:
             self.resolved_trade_date = str(result["trade_date"])
         return result
 
-    def _run_data_mining_group_agent(self, trade_date: str | None = None, **_: Any) -> dict[str, Any]:
+    def _run_data_mining_group_agent(
+        self,
+        trade_date: str | None = None,
+        search_mode: str | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
         resolved_date = trade_date or self.resolved_trade_date
         if not resolved_date:
             return {
@@ -113,6 +125,8 @@ class SemanticCommandAgent:
                 "tool": "run_data_mining_group_agent",
                 "error": "trade_date is required. Call resolve_trade_date first.",
             }
+        if search_mode in {"single_phase", "two_phase"}:
+            self.search_mode = search_mode
 
         self.resolved_trade_date = resolved_date
         group_run_dir = self.project_root / "runs" / "data_mining_group" / resolved_date
@@ -123,6 +137,7 @@ class SemanticCommandAgent:
             run_dir=group_run_dir,
             llm_client=self.llm_client,
             max_steps=self.group_max_steps,
+            search_mode=self.search_mode,
         )
         self.group_result = result
         return result
@@ -153,6 +168,7 @@ class SemanticCommandAgent:
             "status": status.get("status", "unknown" if self.group_result else "not_executed"),
             "command": self.command,
             "trade_date": self.resolved_trade_date,
+            "search_mode": self.search_mode,
             "semantic_run_dir": str(self.run_dir),
             "command_trace_path": str(self.command_trace_path),
             "workflow_status": status,
@@ -166,6 +182,7 @@ class SemanticCommandAgent:
         lines = [
             f"command_status = {command_result.get('status')}",
             f"trade_date = {command_result.get('trade_date')}",
+            f"search_mode = {command_result.get('search_mode')}",
             "",
             str(agent_answer),
         ]
@@ -201,3 +218,10 @@ class SemanticCommandAgent:
     def _write_json(path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n", encoding="utf-8")
+
+    @staticmethod
+    def _infer_search_mode_from_command(command: str) -> str:
+        lowered = command.lower()
+        if any(token in lowered for token in ["两阶段", "二阶段", "two-phase", "two phase", "2-phase", "2 phase"]):
+            return "two_phase"
+        return "single_phase"

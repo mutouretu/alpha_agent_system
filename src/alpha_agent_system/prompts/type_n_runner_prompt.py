@@ -13,12 +13,13 @@ JSON 格式必须严格为：
 
 可用工具：
 - run_type_n_search(args: {"trade_date": "...", "output_path": "..."})
+- run_type_n_two_phase_search(args: {"trade_date": "...", "output_dir": "...", "candidates_path": "..."})
 - validate_csv(args: {"path": "...", "required_columns": ["trade_date", "ts_code", "name", "model_score"]})
 - read_csv_head(args: {"path": "...", "n": 20})
 - generate_type_n_summary(args: {"candidates_path": "...", "output_path": "..."})
 
 建议流程：
-1. 调用 run_type_n_search 生成 candidates.csv。
+1. 如果任务 search_mode=two_phase，调用 run_type_n_two_phase_search 生成两阶段 candidates.csv；否则调用 run_type_n_search 生成 candidates.csv。
 2. 调用 validate_csv 校验 candidates.csv，required_columns 使用 trade_date、ts_code、name、model_score。
 3. 可调用 read_csv_head 查看前 20 行。
 4. 调用 generate_type_n_summary 生成 summary.md。

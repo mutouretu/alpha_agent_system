@@ -25,11 +25,13 @@ class DataMiningGroupAgent:
         run_dir: str | Path,
         llm_client: LLMClient | None = None,
         max_steps: int = 8,
+        search_mode: str = "single_phase",
     ) -> None:
         self.trade_date = trade_date
         self.daily_cache_root = Path(daily_cache_root).resolve()
         self.type_n_root = Path(type_n_root).resolve()
         self.run_dir = Path(run_dir).resolve()
+        self.search_mode = search_mode
         self.daily_cache_run_dir = self.run_dir / "daily_cache"
         self.search_run_dir = self.run_dir / "search"
         self.group_trace_path = self.run_dir / "group_trace.jsonl"
@@ -65,6 +67,7 @@ class DataMiningGroupAgent:
         return {
             "ok": self.workflow_status_path.exists(),
             "status": workflow_status.get("status", "unknown"),
+            "search_mode": self.search_mode,
             "trade_date": self.trade_date,
             "run_dir": str(self.run_dir),
             "group_trace_path": str(self.group_trace_path),
@@ -80,6 +83,7 @@ class DataMiningGroupAgent:
     def _build_task(self) -> str:
         return (
             "请协调 DailyCacheAgent 和 SearcherAgent 完成每日数据挖掘流程。\n"
+            f"search_mode: {self.search_mode}\n"
             f"trade_date: {self.trade_date}\n"
             f"daily_cache_root: {self.daily_cache_root}\n"
             f"type_n_root: {self.type_n_root}\n"
@@ -87,6 +91,7 @@ class DataMiningGroupAgent:
             f"search_run_dir: {self.search_run_dir}\n"
             f"workflow_status_path: {self.workflow_status_path}\n"
             f"data_mining_report_path: {self.report_path}\n"
+            "如果 search_mode=two_phase，SearcherAgent 必须执行两阶段 Type-N 选股。\n"
             "只调用下级 Agent 工具，不直接调用底层项目脚本。"
         )
 
@@ -108,6 +113,7 @@ class DataMiningGroupAgent:
             run_dir=self.search_run_dir,
             llm_client=self.llm_client,
             max_steps=8,
+            search_mode=self.search_mode,
         )
         self._write_json(self.search_result_path, result.get("agent_result", result))
         return result

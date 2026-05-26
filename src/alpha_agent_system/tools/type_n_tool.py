@@ -163,6 +163,79 @@ def run_type_n_search(project_root: str | Path, trade_date: str, output_path: st
     }
 
 
+def run_type_n_two_phase_search(
+    project_root: str | Path,
+    trade_date: str,
+    output_dir: str | Path,
+    candidates_path: str | Path,
+) -> dict[str, Any]:
+    root = Path(project_root).resolve()
+    script_path = root / "scripts" / "run_type_n_two_phase.py"
+    resolved_output_dir = Path(output_dir).resolve()
+    resolved_candidates = Path(candidates_path).resolve()
+
+    if not script_path.exists():
+        return {
+            "ok": False,
+            "tool": "run_type_n_two_phase_search",
+            "error": (
+                "type_n_search does not expose scripts/run_type_n_two_phase.py yet; "
+                "please add the stable two-phase adapter first"
+            ),
+            "project_root": str(root),
+            "expected_script": str(script_path),
+        }
+
+    resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    resolved_candidates.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        _select_project_python(root),
+        str(script_path),
+        "--target-date",
+        trade_date,
+        "--anchor-lookback-days",
+        "20",
+        "--max-forward-days",
+        "20",
+        "--phase1-top-n",
+        "50",
+        "--output-dir",
+        str(resolved_output_dir),
+    ]
+    completed = subprocess.run(
+        cmd,
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    normalize_result: dict[str, Any] | None = None
+    if completed.returncode == 0:
+        normalize_result = _normalize_two_phase_candidates(
+            final_candidates_path=resolved_output_dir / "final_candidates.csv",
+            candidates_path=resolved_candidates,
+            trade_date=trade_date,
+        )
+
+    return {
+        "ok": completed.returncode == 0 and bool(normalize_result and normalize_result["ok"]),
+        "tool": "run_type_n_two_phase_search",
+        "adapter": "scripts/run_type_n_two_phase.py",
+        "command": cmd,
+        "cwd": str(root),
+        "returncode": completed.returncode,
+        "stdout": completed.stdout[-4000:],
+        "stderr": completed.stderr[-4000:],
+        "output_dir": str(resolved_output_dir),
+        "run_status_path": str(resolved_output_dir / "run_status.json"),
+        "two_phase_report_path": str(resolved_output_dir / "type_n_two_phase_report.md"),
+        "final_candidates_path": str(resolved_output_dir / "final_candidates.csv"),
+        "candidates_path": str(resolved_candidates),
+        "normalize_result": normalize_result,
+    }
+
+
 def _build_scan_command(root: Path, trade_date: str, output_path: Path) -> dict[str, Any] | None:
     python_executable = _select_project_python(root)
     legacy_script = root / "scripts" / "run_scan.py"
@@ -298,6 +371,54 @@ def _select_project_python(root: Path) -> str:
         if candidate.exists():
             return str(candidate)
     return sys.executable
+
+
+def _normalize_two_phase_candidates(
+    final_candidates_path: Path,
+    candidates_path: Path,
+    trade_date: str,
+) -> dict[str, Any]:
+    if not final_candidates_path.exists():
+        return {
+            "ok": False,
+            "error": f"Two-phase adapter completed but final_candidates.csv was not created: {final_candidates_path}",
+            "final_candidates_path": str(final_candidates_path),
+        }
+
+    try:
+        df = pd.read_csv(final_candidates_path)
+    except Exception as exc:  # noqa: BLE001
+        return {
+            "ok": False,
+            "error": f"Failed to read two-phase final candidates CSV: {exc}",
+            "final_candidates_path": str(final_candidates_path),
+        }
+
+    if "trade_date" not in df.columns:
+        df["trade_date"] = df["asof_date"] if "asof_date" in df.columns else trade_date
+    if "model_score" not in df.columns:
+        for score_column in ["phase2_score_mean", "phase2_score_min", "phase1_score_mean"]:
+            if score_column in df.columns:
+                df["model_score"] = df[score_column]
+                break
+    if "name" not in df.columns:
+        df["name"] = df["ts_code"] if "ts_code" in df.columns else ""
+
+    preferred_columns = ["trade_date", "ts_code", "name", "model_score"]
+    ordered_columns = [column for column in preferred_columns if column in df.columns]
+    ordered_columns.extend(column for column in df.columns if column not in ordered_columns)
+    df = df.loc[:, ordered_columns]
+    df.to_csv(candidates_path, index=False)
+
+    missing_columns = [column for column in preferred_columns if column not in df.columns]
+    return {
+        "ok": not missing_columns and not df.empty,
+        "path": str(candidates_path),
+        "source_path": str(final_candidates_path),
+        "row_count": int(len(df)),
+        "columns": list(df.columns),
+        "missing_columns": missing_columns,
+    }
 
 
 def _select_existing_model_dir(root: Path) -> Path | None:
